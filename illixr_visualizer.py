@@ -11,9 +11,11 @@ import plotly.offline as po
 import plotly.graph_objs as go
 import plotly.express as px
 
-from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
-from PyQt5.QtWidgets import QGridLayout
+from PyQt5.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout
+from PyQt5.QtWidgets import QLabel, QListWidget, QAbstractItemView
+from PyQt5.QtWidgets import QToolButton
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 import sys
@@ -35,7 +37,8 @@ class VisualizerGUI(QMainWindow):
         self.resize(w, h)
         
         icon = QtGui.QIcon()
-        icon.addPixmap(QtGui.QPixmap("illixr_icon.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
+        illixr_img = QtGui.QPixmap("illixr_icon.png").scaled(64, 64, QtCore.Qt.KeepAspectRatio)
+        icon.addPixmap(illixr_img, QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.setWindowIcon(icon)
         
         self.generalLayout = QGridLayout()
@@ -106,11 +109,66 @@ class VisualizerGUI(QMainWindow):
     def _createDisplay(self):
         """ The display is the interactive plot of the data.
             Starts out as an instructive label. """
+        self.displayLayout = QHBoxLayout()
         
+        # Creates plugin list with title: self.pluginListLayout
+        self._createPluginList()
+        self.displayLayout.addLayout(self.pluginListLayout)
+        
+        # Create display plot region
+        self.fig_view = QWebEngineView()
+        start_html = '<html><head><meta charset="utf-8" />'
+        start_html += '<body>'
+        start_html += '<p style="font-family: Arial">No data provided yet. Upload data in Data menu option.</p>'
+        start_html += '</body></html>'
+        self.fig_view.setHtml(start_html)
+        self.fig_view.raise_()
+        
+        self.displayLayout.addWidget(self.fig_view, 2) # Stretch factor of 2
+        self.generalLayout.addLayout(self.displayLayout, 0, 0, 10, 23)
+    
+    def _createPluginList(self):
+        """ Creates the left-hand reorderable Plugin list. """
+        self.pluginListLayout = QVBoxLayout() # Overall layout of this section
+        
+        # Label for plugin list
+        pluginLabel = QLabel("Plugins")
+        boldFont = QtGui.QFont()
+        boldFont.setBold(True)
+        pluginLabel.setFont(boldFont)
+        pluginLabel.setAlignment(QtCore.Qt.AlignCenter)
+        self.pluginListLayout.addWidget(pluginLabel)
+        
+        self.pluginList = QListWidget() # Orderable plugin list
+        self.strList = ['No plugins provided yet.', 'Add plugin names in Data.']
+        self.pluginList.addItems(self.strList);
+        self.pluginList.setDragDropMode(QAbstractItemView.InternalMove)
+        self.pluginListLayout.addWidget(self.pluginList)
     
     def _createPageNav(self):
         """ Creates the navigation bar beneath the plot which
             enables the user to navigate between pages of the plot """
+        self.pageNavLayout = QHBoxLayout()
+        self.pageNavLayout.addStretch()
+        
+        # Add arrows and icon
+        self.left_button = QToolButton()
+        self.left_button.setArrowType(QtCore.Qt.LeftArrow)
+        
+        self.illixr_img = QLabel()
+        pix_img = QtGui.QPixmap("illixr_icon.png").scaled(36, 36, QtCore.Qt.KeepAspectRatio)
+        self.illixr_img.setPixmap(pix_img)
+        
+        self.right_button = QToolButton()
+        self.right_button.setArrowType(QtCore.Qt.RightArrow)
+        # self.right_button.clicked.connect(RIGHT FUNCTION) <-- which will actually occur in Controller, view simply must call a 'right_clicked' method
+            
+        self.pageNavLayout.addWidget(self.left_button)
+        self.pageNavLayout.addWidget(self.illixr_img)
+        self.pageNavLayout.addWidget(self.right_button)
+        self.pageNavLayout.addStretch()
+        
+        self.generalLayout.addLayout(self.pageNavLayout, 10, 0, 1, 23)
         
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
