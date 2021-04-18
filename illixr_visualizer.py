@@ -11,10 +11,11 @@ import plotly.offline as po
 import plotly.graph_objs as go
 import plotly.express as px
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt5.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout
 from PyQt5.QtWidgets import QLabel, QListWidget, QAbstractItemView
-from PyQt5.QtWidgets import QToolButton, QPushButton, QLineEdit, QDialogButtonBox
+from PyQt5.QtWidgets import QToolButton, QPushButton, QLineEdit
+from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QFileDialog
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -214,19 +215,19 @@ class VisualizerGUILoadDialog(QDialog):
         self.pluginDisplay = QLineEdit()
         self.pluginDisplay.setReadOnly(True)
         self.pluginBrowseButton = QPushButton("Browse")
-        self.pluginBrowseButton.clicked.connect(lambda: self._browse("plugin"))
+        self.pluginBrowseButton.clicked.connect(lambda: self._browse("Plugin"))
         
         switchboardLabel = QLabel("Switchboard Database:")
         self.switchboardDisplay = QLineEdit()
         self.switchboardDisplay.setReadOnly(True)
         self.switchboardBrowseButton = QPushButton("Browse")
-        self.switchboardBrowseButton.clicked.connect(lambda: self._browse("switchboard"))
+        self.switchboardBrowseButton.clicked.connect(lambda: self._browse("Switchboard"))
         
         threadloopLabel = QLabel("Threadloop Database:")
         self.threadloopDisplay = QLineEdit()
         self.threadloopDisplay.setReadOnly(True)
         self.threadloopBrowseButton = QPushButton("Browse")
-        self.threadloopBrowseButton.clicked.connect(lambda: self._browse("threadloop"))
+        self.threadloopBrowseButton.clicked.connect(lambda: self._browse("Threadloop"))
         
         self.layout.addWidget(pluginLabel, 2, 0)
         self.layout.addWidget(self.pluginDisplay, 2, 1)
@@ -242,15 +243,26 @@ class VisualizerGUILoadDialog(QDialog):
         subLayout.addSpacing(5)
         buttons = QDialogButtonBox()
         buttons.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
+        #cancelButton = 
         subLayout.addWidget(buttons, alignment=QtCore.Qt.AlignRight)
         self.layout.addLayout(subLayout, 5, 0, 1, 3)
         
-        self.setLayout(self.layout)        
+        self.setLayout(self.layout)
 
     def _browse(self, name):
         """ Launches QFileDialog, updates paths and display """ 
-        print(name)
-        
+        filename, _ = QFileDialog.getOpenFileName(self, "Open " + name + " Database", QtCore.QDir.currentPath(), "Database files (*.sqlite *.sql *.db)")
+        if filename:
+            # Set database path and display filename in QLineEdit
+            if name == "Plugin":
+                self.pluginDBPath = filename
+                self.pluginDisplay.setText(filename)
+            elif name == "Switchboard":
+                self.switchboardDBPath = filename
+                self.switchboardDisplay.setText(filename)
+            elif name == "Threadloop":
+                self.threadloopDBPath = filename
+                self.threadloopDisplay.setText(filename)
 
 
 class VisualizerController():
