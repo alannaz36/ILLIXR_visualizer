@@ -11,10 +11,10 @@ import plotly.offline as po
 import plotly.graph_objs as go
 import plotly.express as px
 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QWidget
 from PyQt5.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout
 from PyQt5.QtWidgets import QLabel, QListWidget, QAbstractItemView
-from PyQt5.QtWidgets import QToolButton
+from PyQt5.QtWidgets import QToolButton, QFrame
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -37,7 +37,7 @@ class VisualizerGUI(QMainWindow):
         self.resize(w, h)
         
         icon = QtGui.QIcon()
-        illixr_img = QtGui.QPixmap("illixr_icon.png").scaled(64, 64, QtCore.Qt.KeepAspectRatio)
+        illixr_img = QtGui.QPixmap("illixr_icon_square.png") #.scaled(64, 64, QtCore.Qt.KeepAspectRatio)
         icon.addPixmap(illixr_img, QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.setWindowIcon(icon)
         
@@ -84,23 +84,30 @@ class VisualizerGUI(QMainWindow):
         #self.actionSave.setObjectName("actionSave")
         self.actionSave.setText("Save")
         
-        self.actionPluginNames = QtWidgets.QAction(self)
+        self.actionUpload = QtWidgets.QAction(self)
+        #self.actionUpload.setObjectName("actionUpload")
+        self.actionUpload.setText("Upload Data")
+        self.actionUpload.setShortcut("Ctrl+U")
+        
+        #self.actionPluginNames = QtWidgets.QAction(self)
         #self.actionPlugins.setObjectName("actionPluginNames")
-        self.actionPluginNames.setText("Plugin Names")
+        #self.actionPluginNames.setText("Plugin Names")
         
-        self.actionSwitchboard_Data = QtWidgets.QAction(self)
+        #self.actionSwitchboard_Data = QtWidgets.QAction(self)
         #self.actionSwitchboard_Data.setObjectName("actionSwitchboard_Data")
-        self.actionSwitchboard_Data.setText("Switchboard Data")
+        #self.actionSwitchboard_Data.setText("Switchboard Data")
         
-        self.actionThreadloop_Data = QtWidgets.QAction(self)
+        #self.actionThreadloop_Data = QtWidgets.QAction(self)
         #self.actionThreadloop_Data.setObjectName("actionThreadloop_Data")
-        self.actionThreadloop_Data.setText("Threadloop Data")
+        #self.actionThreadloop_Data.setText("Threadloop Data")
         
         self.menuFile.addAction(self.actionNew)
         self.menuFile.addAction(self.actionSave)
-        self.menuData.addAction(self.actionPluginNames)
-        self.menuData.addAction(self.actionSwitchboard_Data)
-        self.menuData.addAction(self.actionThreadloop_Data)
+        self.menuData.addAction(self.actionUpload)
+        
+        #self.menuData.addAction(self.actionPluginNames)
+        #self.menuData.addAction(self.actionSwitchboard_Data)
+        #self.menuData.addAction(self.actionThreadloop_Data)
         self.menubar.addAction(self.menuFile.menuAction())
         self.menubar.addAction(self.menuData.menuAction())
         self.menubar.addAction(self.menuPlotSettings.menuAction())
@@ -114,17 +121,12 @@ class VisualizerGUI(QMainWindow):
         # Creates plugin list with title: self.pluginListLayout
         self._createPluginList()
         self.displayLayout.addLayout(self.pluginListLayout)
+
+        # Create figure region: self.figureRegion
+        self._createFigureRegion()
+        self.displayLayout.addWidget(self.figureRegion, 1) # Only display stretches
         
-        # Create display plot region
-        self.fig_view = QWebEngineView()
-        start_html = '<html><head><meta charset="utf-8" />'
-        start_html += '<body>'
-        start_html += '<p style="font-family: Arial">No data provided yet. Upload data in Data menu option.</p>'
-        start_html += '</body></html>'
-        self.fig_view.setHtml(start_html)
-        self.fig_view.raise_()
-        
-        self.displayLayout.addWidget(self.fig_view, 2) # Stretch factor of 2
+        # Add full display to main window
         self.generalLayout.addLayout(self.displayLayout, 0, 0, 10, 23)
     
     def _createPluginList(self):
@@ -144,6 +146,27 @@ class VisualizerGUI(QMainWindow):
         self.pluginList.addItems(self.strList);
         self.pluginList.setDragDropMode(QAbstractItemView.InternalMove)
         self.pluginListLayout.addWidget(self.pluginList)
+    
+    def _createFigureRegion(self):
+        """ Creates the right-hand figure display. """
+        # Embed figure within widget to create border
+        self.figureRegion = QWidget()
+        self.figureRegion.setStyleSheet("border: 1px solid darkgray")
+                
+        self.displaySubLayout = QVBoxLayout(self.figureRegion)
+        self.displaySubLayout.setContentsMargins(1,1,1,1)
+
+        # Create display plot region
+        self.fig_view = QWebEngineView(self.figureRegion)
+        start_html = '<html><head><meta charset="utf-8" />'
+        start_html += '<body>'
+        start_html += '<p style="font-family: sans-serif">No data provided yet. Upload data in Data menu option.</p>'
+        start_html += '</body></html>'
+        self.fig_view.setHtml(start_html)
+        self.fig_view.raise_()
+        
+        # Add figure to sub layout
+        self.displaySubLayout.addWidget(self.fig_view)    
     
     def _createPageNav(self):
         """ Creates the navigation bar beneath the plot which
@@ -169,14 +192,32 @@ class VisualizerGUI(QMainWindow):
         self.pageNavLayout.addStretch()
         
         self.generalLayout.addLayout(self.pageNavLayout, 10, 0, 1, 23)
+
+    # END METHODS FOR INITIALIZING GUI
+	
+class VisualizerGUIUploadDialog(QDialog):
+    """ Part of ILLIXR Visualizer's View. 
+        A helper class defining the data upload menu. """
+    def __init__():
+        super().__init__()
         
+        self.setWindowTitle("Upload Data")
+        
+        self.layout = QVBoxLayout()
+        instructions = QLabel("Please select the database containing the plugin names. Then select the corresponding switchboard and/or threadloop databases.")
+        self.layout.addWidget(instructions)
+        
+        
+
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
         Interfaces between the Model and View. """
 
+
 class VisualizerData():
     """ ILLIXR Visualizer's Model. 
         Holds application settings and loaded database data. """
+    
 
 if __name__ == '__main__':
     illixr_visualizer = QApplication(sys.argv)
