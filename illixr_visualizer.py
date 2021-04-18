@@ -14,7 +14,7 @@ import plotly.express as px
 from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog, QWidget
 from PyQt5.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout
 from PyQt5.QtWidgets import QLabel, QListWidget, QAbstractItemView
-from PyQt5.QtWidgets import QToolButton, QFrame
+from PyQt5.QtWidgets import QToolButton, QPushButton, QLineEdit, QDialogButtonBox
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -84,30 +84,16 @@ class VisualizerGUI(QMainWindow):
         #self.actionSave.setObjectName("actionSave")
         self.actionSave.setText("Save")
         
-        self.actionUpload = QtWidgets.QAction(self)
+        self.actionLoad = QtWidgets.QAction(self)
         #self.actionUpload.setObjectName("actionUpload")
-        self.actionUpload.setText("Upload Data")
-        self.actionUpload.setShortcut("Ctrl+U")
-        
-        #self.actionPluginNames = QtWidgets.QAction(self)
-        #self.actionPlugins.setObjectName("actionPluginNames")
-        #self.actionPluginNames.setText("Plugin Names")
-        
-        #self.actionSwitchboard_Data = QtWidgets.QAction(self)
-        #self.actionSwitchboard_Data.setObjectName("actionSwitchboard_Data")
-        #self.actionSwitchboard_Data.setText("Switchboard Data")
-        
-        #self.actionThreadloop_Data = QtWidgets.QAction(self)
-        #self.actionThreadloop_Data.setObjectName("actionThreadloop_Data")
-        #self.actionThreadloop_Data.setText("Threadloop Data")
+        self.actionLoad.setText("Load Data")
+        self.actionLoad.setShortcut("Ctrl+L")
+        self.actionLoad.triggered.connect(self._load)
         
         self.menuFile.addAction(self.actionNew)
         self.menuFile.addAction(self.actionSave)
-        self.menuData.addAction(self.actionUpload)
+        self.menuData.addAction(self.actionLoad)
         
-        #self.menuData.addAction(self.actionPluginNames)
-        #self.menuData.addAction(self.actionSwitchboard_Data)
-        #self.menuData.addAction(self.actionThreadloop_Data)
         self.menubar.addAction(self.menuFile.menuAction())
         self.menubar.addAction(self.menuData.menuAction())
         self.menubar.addAction(self.menuPlotSettings.menuAction())
@@ -142,7 +128,7 @@ class VisualizerGUI(QMainWindow):
         self.pluginListLayout.addWidget(pluginLabel)
         
         self.pluginList = QListWidget() # Orderable plugin list
-        self.strList = ['No plugins provided yet.', 'Add plugin names in Data.']
+        self.strList = ['No plugin names provided yet.', 'Load through Data menu option.']
         self.pluginList.addItems(self.strList);
         self.pluginList.setDragDropMode(QAbstractItemView.InternalMove)
         self.pluginListLayout.addWidget(self.pluginList)
@@ -160,7 +146,7 @@ class VisualizerGUI(QMainWindow):
         self.fig_view = QWebEngineView(self.figureRegion)
         start_html = '<html><head><meta charset="utf-8" />'
         start_html += '<body>'
-        start_html += '<p style="font-family: sans-serif">No data provided yet. Upload data in Data menu option.</p>'
+        start_html += '<p style="font-family: sans-serif">No data provided yet. Load data in Data menu option.</p>'
         start_html += '</body></html>'
         self.fig_view.setHtml(start_html)
         self.fig_view.raise_()
@@ -194,20 +180,78 @@ class VisualizerGUI(QMainWindow):
         self.generalLayout.addLayout(self.pageNavLayout, 10, 0, 1, 23)
 
     # END METHODS FOR INITIALIZING GUI
+    
+    def _load(self):
+        # Launches VisualizerGUILoadDialog
+        loadGUI = VisualizerGUILoadDialog()
+        if loadGUI.exec_():
+            print("Success!")
+        else:
+            print("Cancel!")
+        
+        # vvv Potentially in other method triggered by VisualizerGUILoadDialog
+        # Retrieves paths from VisualizerGUILoadDialog potentially passed via dict
+        # Passes paths to Controller
 	
-class VisualizerGUIUploadDialog(QDialog):
+class VisualizerGUILoadDialog(QDialog):
     """ Part of ILLIXR Visualizer's View. 
         A helper class defining the data upload menu. """
-    def __init__():
+    def __init__(self):
         super().__init__()
         
-        self.setWindowTitle("Upload Data")
+        self.setWindowTitle("Load Data")
+        w = 500
+        h = int(w*2/5)
+        self.setFixedSize(w, h)
+        self.move(400, 200)
         
-        self.layout = QVBoxLayout()
+        self.layout = QGridLayout()
         instructions = QLabel("Please select the database containing the plugin names. Then select the corresponding switchboard and/or threadloop databases.")
-        self.layout.addWidget(instructions)
+        instructions.setWordWrap(True)
+        self.layout.addWidget(instructions, 0, 0, 1, 3)
+
+        pluginLabel = QLabel("Plugin Database:")
+        self.pluginDisplay = QLineEdit()
+        self.pluginDisplay.setReadOnly(True)
+        self.pluginBrowseButton = QPushButton("Browse")
+        self.pluginBrowseButton.clicked.connect(lambda: self._browse("plugin"))
         
+        switchboardLabel = QLabel("Switchboard Database:")
+        self.switchboardDisplay = QLineEdit()
+        self.switchboardDisplay.setReadOnly(True)
+        self.switchboardBrowseButton = QPushButton("Browse")
+        self.switchboardBrowseButton.clicked.connect(lambda: self._browse("switchboard"))
         
+        threadloopLabel = QLabel("Threadloop Database:")
+        self.threadloopDisplay = QLineEdit()
+        self.threadloopDisplay.setReadOnly(True)
+        self.threadloopBrowseButton = QPushButton("Browse")
+        self.threadloopBrowseButton.clicked.connect(lambda: self._browse("threadloop"))
+        
+        self.layout.addWidget(pluginLabel, 2, 0)
+        self.layout.addWidget(self.pluginDisplay, 2, 1)
+        self.layout.addWidget(self.pluginBrowseButton, 2, 2)
+        self.layout.addWidget(switchboardLabel, 3, 0)
+        self.layout.addWidget(self.switchboardDisplay, 3, 1)
+        self.layout.addWidget(self.switchboardBrowseButton, 3, 2)
+        self.layout.addWidget(threadloopLabel, 4, 0) 
+        self.layout.addWidget(self.threadloopDisplay, 4, 1)
+        self.layout.addWidget(self.threadloopBrowseButton, 4, 2)
+        
+        subLayout = QVBoxLayout()
+        subLayout.addSpacing(5)
+        buttons = QDialogButtonBox()
+        buttons.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
+        subLayout.addWidget(buttons, alignment=QtCore.Qt.AlignRight)
+        self.layout.addLayout(subLayout, 5, 0, 1, 3)
+        
+        self.setLayout(self.layout)        
+
+    def _browse(self, name):
+        """ Launches QFileDialog, updates paths and display """ 
+        print(name)
+        
+
 
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
