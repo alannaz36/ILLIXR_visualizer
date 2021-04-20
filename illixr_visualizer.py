@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget
 from PyQt5.QtWidgets import QGridLayout, QHBoxLayout, QVBoxLayout
 from PyQt5.QtWidgets import QLabel, QListWidget, QAbstractItemView
 from PyQt5.QtWidgets import QToolButton, QPushButton, QLineEdit
-from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QFileDialog
+from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QFileDialog, QMessageBox
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -288,9 +288,13 @@ class VisualizerGUILoadDialog(QDialog):
             self.tempPathDict= {}
             self.accept()
         else:
-            # TODO: display some error message and return to dialog
-            print("Cannot load, invalid input.")
-            self.reject()
+            # Display message with instructions for loading
+            error_msg = QMessageBox()
+            error_msg.setIcon(QMessageBox.Warning)
+            error_msg.setText("Additional information needed - Plugin names database and at least one log database (Switchboard or Threadloop) must be provided.")
+            error_msg.setWindowTitle("Cannot Load")
+            error_msg.setStandardButtons(QMessageBox.Ok)
+            error_msg.exec_()
 
     def _cancel(self):
         """ Cancels load """
