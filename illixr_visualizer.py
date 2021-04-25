@@ -186,14 +186,11 @@ class VisualizerGUI(QMainWindow):
         # Launches VisualizerGUILoadDialog
         loadGUI = VisualizerGUILoadDialog()
         if loadGUI.exec_():
-            print("Success!")
-        else:
-            print("Cancel!")
+            # Successful retrieval of databases
+            # TODO: tell Controller that data paths are ready
+            #       Controller will then be able to obtain them with
+            # namePath, dataPath = loadGUI.getDatabasePaths()
         
-        # vvv Potentially in other method triggered by VisualizerGUILoadDialog
-        # Retrieves paths from VisualizerGUILoadDialog potentially passed via dict
-        # Passes paths to Controller
-	
 class VisualizerGUILoadDialog(QDialog):
     """ Part of ILLIXR Visualizer's View. 
         A helper class defining the data upload menu. """
@@ -327,12 +324,41 @@ class VisualizerGUILoadDialog(QDialog):
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
         Interfaces between the Model and View. """
-
+    def __init__(self, model, view):
+        """ Controller initializer. """
+        self.model = model
+        self.view = view
+    
+    # TODO: Implement controller
 
 class VisualizerData():
     """ ILLIXR Visualizer's Model. 
         Holds application settings and loaded database data. """
-    
+    def __init__(self):
+        """ Model initializer. 
+            Defines default plot settings. """
+        self.pageSz = 100 # Number of nanoseconds to include per page
+        self.currentPage = 0 # Starts on the first page of data
+        
+        self.pluginTable = 'plugin_name' # Name of table containing plugin names 
+        self.pluginNameSQL = 'SELECT * FROM ' + self.pluginTableName
+        
+        self.pluginID = 'plugin_id' # Name of plugin identifier attribute, shared over databases
+        
+        self.switchboardTable = 'switchboard_callback' # Name of table containing switchboard data
+        
+        self.threadloopTable = 'threadloop_iteration' # Name of table containing threadloop data
+        
+        self.startTime = 'cpu_time_start' # Name of data attribute containing start times
+        self.endTime   = 'cpu_time_stop'  # Name of attribute containing end times
+        
+        # Define base data extraction SQL statement, add data table name on use
+        self.dataExtractSQL = ('SELECT ' +
+            self.pluginID  + ', ' +
+            self.startTime + ', ' +
+            self.endTime   +
+            ' FROM '
+        )
 
 if __name__ == '__main__':
     illixr_visualizer = QApplication(sys.argv)
