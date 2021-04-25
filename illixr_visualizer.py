@@ -22,11 +22,144 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 import sys
 
 __author__ = 'Alanna Zoscak'
+        
+class VisualizerGUILoadDialog(QDialog):
+    """ Part of ILLIXR Visualizer's View. 
+        A helper class defining the data upload menu. """
+    def __init__(self):
+        super().__init__()
+        
+        # Database path fields
+        self.pluginDBPath = None
+        self.switchboardDBPath = None
+        self.threadloopDBPath = None
+        self.tempPathDict = {} # Store paths until OK is clicked & paths validated
+        
+        self.setWindowTitle("Load Data")
+        w = 500
+        h = int(w*2/5)
+        self.setFixedSize(w, h)
+        self.move(400, 200)
+        
+        self.layout = QGridLayout()
+        instructions = QLabel("Please select the database containing the plugin names. Then select the corresponding switchboard and/or threadloop databases.")
+        instructions.setWordWrap(True)
+        self.layout.addWidget(instructions, 0, 0, 1, 3)
 
-# Subclass of QMainWindow to set up the application's GUI
+        pluginLabel = QLabel("Plugin Database:")
+        self.pluginDisplay = QLineEdit()
+        self.pluginDisplay.setReadOnly(True)
+        self.pluginBrowseButton = QPushButton("Browse")
+        self.pluginBrowseButton.clicked.connect(lambda: self._browse("Plugin"))
+        
+        switchboardLabel = QLabel("Switchboard Database:")
+        self.switchboardDisplay = QLineEdit()
+        self.switchboardDisplay.setReadOnly(True)
+        self.switchboardBrowseButton = QPushButton("Browse")
+        self.switchboardBrowseButton.clicked.connect(lambda: self._browse("Switchboard"))
+        
+        threadloopLabel = QLabel("Threadloop Database:")
+        self.threadloopDisplay = QLineEdit()
+        self.threadloopDisplay.setReadOnly(True)
+        self.threadloopBrowseButton = QPushButton("Browse")
+        self.threadloopBrowseButton.clicked.connect(lambda: self._browse("Threadloop"))
+        
+        self.layout.addWidget(pluginLabel, 2, 0)
+        self.layout.addWidget(self.pluginDisplay, 2, 1)
+        self.layout.addWidget(self.pluginBrowseButton, 2, 2)
+        self.layout.addWidget(switchboardLabel, 3, 0)
+        self.layout.addWidget(self.switchboardDisplay, 3, 1)
+        self.layout.addWidget(self.switchboardBrowseButton, 3, 2)
+        self.layout.addWidget(threadloopLabel, 4, 0) 
+        self.layout.addWidget(self.threadloopDisplay, 4, 1)
+        self.layout.addWidget(self.threadloopBrowseButton, 4, 2)
+        
+        subLayout = QVBoxLayout()
+        subLayout.addSpacing(5)
+        buttons = QDialogButtonBox()
+        buttons.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
+        buttons.button(QDialogButtonBox.Cancel).clicked.connect(self._cancel)
+        buttons.button(QDialogButtonBox.Ok).clicked.connect(self._load)
+        subLayout.addWidget(buttons, alignment=QtCore.Qt.AlignRight)
+        self.layout.addLayout(subLayout, 5, 0, 1, 3)
+        
+        self.setLayout(self.layout)
+
+    def _browse(self, name):
+        """ Launches QFileDialog, updates paths and display """ 
+        filename, _ = QFileDialog.getOpenFileName(self, "Open " + name + " Database", QtCore.QDir.currentPath(), "Database files (*.sqlite *.sql *.db)")
+        if filename:
+            # Set database path and display filename in QLineEdit
+            if name == "Plugin":
+                self.tempPathDict[name] = filename
+                self.pluginDisplay.setText(filename)
+            elif name == "Switchboard":
+                self.tempPathDict[name] = filename
+                self.switchboardDisplay.setText(filename)
+            elif name == "Threadloop":
+                self.tempPathDict[name] = filename
+                # MOVE self.threadloopDBPath = filename
+                self.threadloopDisplay.setText(filename)
+
+    def _load(self):
+        """ Stores the database paths after validating that
+            necessary information has been provided """
+        if self._validate():
+            self.pluginDBPath = self.tempPathDict["Plugin"]
+            if "Switchboard" in self.tempPathDict:
+                self.switchboardDBPath = self.tempPathDict["Switchboard"]
+            else:
+                self.switchboardDBPath = None
+            if "Threadloop" in self.tempPathDict:
+                self.threadloopDBPath = self.tempPathDict["Threadloop"]
+            else:
+                self.threadloopDBPath = None
+            self.tempPathDict= {}
+            self.accept()
+        else:
+            # Display message with instructions for loading
+            error_msg = QMessageBox()
+            error_msg.setIcon(QMessageBox.Warning)
+            error_msg.setText("Additional information needed - Plugin names database and at least one log database (Switchboard or Threadloop) must be provided.")
+            error_msg.setWindowTitle("Cannot Load")
+            error_msg.setStandardButtons(QMessageBox.Ok)
+            error_msg.exec_()
+
+    def _cancel(self):
+        """ Cancels load """
+        self.tempPathDict = {}
+        self.reject()
+
+    def _validate(self):
+        """ Validates that necessary databases have been provided """
+        if "Plugin" in self.tempPathDict:
+            return "Switchboard" in self.tempPathDict or "Threadloop" in self.tempPathDict
+        return False
+
+    def getDatabasePaths(self):
+        """ Provides the database paths in a tuple where first is the plugin 
+            database path and the second is a list of the data (switchboard
+            and threadloop) databases paths. If plugin database path is not 
+            found, namePath is None. If data paths are not found, dataPaths
+            is an empty list. """
+        namePath = None
+        dataPaths = []
+        if self.pluginDBPath is not None:
+            namePath = self.pluginDBPath
+            if self.switchboardDBPath is not None:
+                dataPaths.append(self.switchboardDBPath)
+            if self.threadloopDBPath is not None:
+                dataPaths.append(self.threadloopDBPath)
+        return namePath, dataPaths
+                
+
 class VisualizerGUI(QMainWindow):
     """ ILLIXR_Visualizer's View (GUI).
+        Defines the main window.
         Displays plots and interfaces with user. """
+    # Define signals for signalling Controller
+    loadSignal = QtCore.pyqtSignal()
+        
     def __init__(self):
         """ View initializer. """
         super().__init__()
@@ -183,171 +316,30 @@ class VisualizerGUI(QMainWindow):
     # END METHODS FOR INITIALIZING GUI
     
     def _load(self):
-        # Launches VisualizerGUILoadDialog
-        loadGUI = VisualizerGUILoadDialog()
-        if loadGUI.exec_():
-            # Successful retrieval of databases
-            # TODO: tell Controller that data paths are ready
-            #       Controller will then be able to obtain them with
-            # namePath, dataPath = loadGUI.getDatabasePaths()
-        
-class VisualizerGUILoadDialog(QDialog):
-    """ Part of ILLIXR Visualizer's View. 
-        A helper class defining the data upload menu. """
-    def __init__(self):
-        super().__init__()
-        
-        # Database path fields
-        self.pluginDBPath = None
-        self.switchboardDBPath = None
-        self.threadloopDBPath = None
-        self.tempPathDict = {} # Store paths until OK is clicked & paths validated
-        
-        self.setWindowTitle("Load Data")
-        w = 500
-        h = int(w*2/5)
-        self.setFixedSize(w, h)
-        self.move(400, 200)
-        
-        self.layout = QGridLayout()
-        instructions = QLabel("Please select the database containing the plugin names. Then select the corresponding switchboard and/or threadloop databases.")
-        instructions.setWordWrap(True)
-        self.layout.addWidget(instructions, 0, 0, 1, 3)
-
-        pluginLabel = QLabel("Plugin Database:")
-        self.pluginDisplay = QLineEdit()
-        self.pluginDisplay.setReadOnly(True)
-        self.pluginBrowseButton = QPushButton("Browse")
-        self.pluginBrowseButton.clicked.connect(lambda: self._browse("Plugin"))
-        
-        switchboardLabel = QLabel("Switchboard Database:")
-        self.switchboardDisplay = QLineEdit()
-        self.switchboardDisplay.setReadOnly(True)
-        self.switchboardBrowseButton = QPushButton("Browse")
-        self.switchboardBrowseButton.clicked.connect(lambda: self._browse("Switchboard"))
-        
-        threadloopLabel = QLabel("Threadloop Database:")
-        self.threadloopDisplay = QLineEdit()
-        self.threadloopDisplay.setReadOnly(True)
-        self.threadloopBrowseButton = QPushButton("Browse")
-        self.threadloopBrowseButton.clicked.connect(lambda: self._browse("Threadloop"))
-        
-        self.layout.addWidget(pluginLabel, 2, 0)
-        self.layout.addWidget(self.pluginDisplay, 2, 1)
-        self.layout.addWidget(self.pluginBrowseButton, 2, 2)
-        self.layout.addWidget(switchboardLabel, 3, 0)
-        self.layout.addWidget(self.switchboardDisplay, 3, 1)
-        self.layout.addWidget(self.switchboardBrowseButton, 3, 2)
-        self.layout.addWidget(threadloopLabel, 4, 0) 
-        self.layout.addWidget(self.threadloopDisplay, 4, 1)
-        self.layout.addWidget(self.threadloopBrowseButton, 4, 2)
-        
-        subLayout = QVBoxLayout()
-        subLayout.addSpacing(5)
-        buttons = QDialogButtonBox()
-        buttons.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok)
-        buttons.button(QDialogButtonBox.Cancel).clicked.connect(self._cancel)
-        buttons.button(QDialogButtonBox.Ok).clicked.connect(self._load)
-        subLayout.addWidget(buttons, alignment=QtCore.Qt.AlignRight)
-        self.layout.addLayout(subLayout, 5, 0, 1, 3)
-        
-        self.setLayout(self.layout)
-
-    def _browse(self, name):
-        """ Launches QFileDialog, updates paths and display """ 
-        filename, _ = QFileDialog.getOpenFileName(self, "Open " + name + " Database", QtCore.QDir.currentPath(), "Database files (*.sqlite *.sql *.db)")
-        if filename:
-            # Set database path and display filename in QLineEdit
-            if name == "Plugin":
-                self.tempPathDict[name] = filename
-                self.pluginDisplay.setText(filename)
-            elif name == "Switchboard":
-                self.tempPathDict[name] = filename
-                self.switchboardDisplay.setText(filename)
-            elif name == "Threadloop":
-                self.tempPathDict[name] = filename
-                # MOVE self.threadloopDBPath = filename
-                self.threadloopDisplay.setText(filename)
-
-    def _load(self):
-        """ Stores the database paths after validating that
-            necessary information has been provided """
-        if self._validate():
-            self.pluginDBPath = self.tempPathDict["Plugin"]
-            if "Switchboard" in self.tempPathDict:
-                self.switchboardDBPath = self.tempPathDict["Switchboard"]
-            else:
-                self.switchboardDBPath = None
-            if "Threadloop" in self.tempPathDict:
-                self.threadloopDBPath = self.tempPathDict["Threadloop"]
-            else:
-                self.threadloopDBPath = None
-            self.tempPathDict= {}
-            self.accept()
-        else:
-            # Display message with instructions for loading
-            error_msg = QMessageBox()
-            error_msg.setIcon(QMessageBox.Warning)
-            error_msg.setText("Additional information needed - Plugin names database and at least one log database (Switchboard or Threadloop) must be provided.")
-            error_msg.setWindowTitle("Cannot Load")
-            error_msg.setStandardButtons(QMessageBox.Ok)
-            error_msg.exec_()
-
-    def _cancel(self):
-        """ Cancels load """
-        self.tempPathDict = {}
-        self.reject()
-
-    def _validate(self):
-        """ Validates that necessary databases have been provided """
-        if "Plugin" in self.tempPathDict:
-            return "Switchboard" in self.tempPathDict or "Threadloop" in self.tempPathDict
-        return False
-
-    def getDatabasePaths(self):
-        """ Provides the database paths in a tuple where first is the plugin 
-            database path and the second is a list of the data (switchboard
-            and threadloop) databases paths. If plugin database path is not 
-            found, namePath is None. If data paths are not found, dataPaths
-            is an empty list. """
-        namePath = None
-        dataPaths = []
-        if self.pluginDBPath is not None:
-            namePath = self.pluginDBPath
-            if self.switchboardDBPath is not None:
-                dataPaths.append(self.switchboardDBPath)
-            if self.threadloopDBPath is not None:
-                dataPaths.append(self.threadloopDBPath)
-        return namePath, dataPaths
-                
+        """ Signals Controller to handle load. """
+        self.loadSignal.emit()
+       
 
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
-        Interfaces between the Model and View. """
-    def __init__(self, model, view):
+        Interfaces between the View and Model. """
+    def __init__(self, view):
         """ Controller initializer. """
-        self.model = model
         self.view = view
-    
-    # TODO: Implement controller
-
-class VisualizerData():
-    """ ILLIXR Visualizer's Model. 
-        Holds application settings and loaded database data. """
-    def __init__(self):
-        """ Model initializer. 
-            Defines default plot settings. """
-        self.pageSz = 100 # Number of nanoseconds to include per page
-        self.currentPage = 0 # Starts on the first page of data
+        self.view.loadSignal.connect(self._load)
+        
+        # Default plot settings
+        self.pageSz = 1000000 # Number of nanoseconds to include per page
+        self.currentPage = 0  # Starts on the first page of data
         
         self.pluginTable = 'plugin_name' # Name of table containing plugin names 
-        self.pluginNameSQL = 'SELECT * FROM ' + self.pluginTableName
+        self.pluginNameSQL = 'SELECT * FROM ' + self.pluginTable
         
         self.pluginID = 'plugin_id' # Name of plugin identifier attribute, shared over databases
         
+        # Data table names
         self.switchboardTable = 'switchboard_callback' # Name of table containing switchboard data
-        
-        self.threadloopTable = 'threadloop_iteration' # Name of table containing threadloop data
+        self.threadloopTable  = 'threadloop_iteration' # Name of table containing threadloop data
         
         self.startTime = 'cpu_time_start' # Name of data attribute containing start times
         self.endTime   = 'cpu_time_stop'  # Name of attribute containing end times
@@ -359,11 +351,20 @@ class VisualizerData():
             self.endTime   +
             ' FROM '
         )
+    
+    def _load(self):
+        """ Handles loading of databases. """
+        # Launches VisualizerGUILoadDialog
+        loadGUI = VisualizerGUILoadDialog()
+        if loadGUI.exec_():
+            # Successful retrieval of databases
+            namePath, dataPath = loadGUI.getDatabasePaths()    
 
 if __name__ == '__main__':
     illixr_visualizer = QApplication(sys.argv)
     view = VisualizerGUI()
     view.show()
+    controller = VisualizerController(view)
     sys.exit(illixr_visualizer.exec_())
         
         
