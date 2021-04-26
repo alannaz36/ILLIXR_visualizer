@@ -21,6 +21,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 import sys
 import threading
+import warnings
+from pandas.core.common import SettingWithCopyWarning
 
 __author__ = 'Alanna Zoscak'
         
@@ -272,12 +274,7 @@ class VisualizerGUI(QMainWindow):
 
         # Create display plot region
         self.fig_view = QWebEngineView(self.figureRegion)
-        start_html = '<html><head><meta charset="utf-8" />'
-        start_html += '<body>'
-        start_html += '<p style="font-family: sans-serif">No data provided yet. Load data in Data menu option.</p>'
-        start_html += '</body></html>'
-        self.fig_view.setHtml(start_html)
-        self.fig_view.raise_()
+        self.set_display(text='No data provided yet. Load data in Data menu option.')
         
         # Add figure to sub layout
         self.displaySubLayout.addWidget(self.fig_view)    
@@ -313,9 +310,26 @@ class VisualizerGUI(QMainWindow):
         """ Signals Controller to handle load. """
         self.loadSignal.emit()
        
-    def display_fig(self, fig):
+    def set_display(self, figure=None, text=None):
         """ Embeds given figure in the display. """
-        # TODO maybe lock on who can set the display?
+        if figure is not None and text is not None:
+            raise Exception("Only figure or text may be supplied.")
+        
+        html = '<html><head><meta charset="utf-8" />'
+        if figure is not None:
+            html += '<script src="https://cdn.plot.ly/plotly-latest.min.js"></script></head>'
+            html += '<body>'
+            # 'div' is specified for embedding the graph
+            html += po.plot(figure, include_plotlyjs=False, output_type='div')
+        elif text is not None and isinstance(text, str):
+            html += '<body>'
+            html += '<p style="font-family: sans-serif">' + text + '</p>'
+        else:
+            raise Exception("figure or text must be supplied.")
+        html += '</body></html>'
+        
+        self.fig_view.setHtml(html)
+        self.fig_view.raise_()
 
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
@@ -466,6 +480,12 @@ class VisualizerController():
             pageStart = self.currentPage * self.pageSz
             pageEnd   = self.currentPage * self.pageSz + self.pageSz
             subDF = self.dataDF[(self.dataDF[self.startTime] >= pageStart) & (self.dataDF[self.startTime] < pageEnd)]
+            
+            # Suppress warning
+            warnings.simplefilter('ignore', SettingWithCopyWarning)
+            
+            # if any rows have an endTime >= pageEnd, replace with endTime
+            subDF.loc[subDF[self.endTime] > pageEnd, self.endTime] = pageEnd
                 
         # Generate figure for display
         fig = px.timeline(subDF, 
@@ -481,7 +501,7 @@ class VisualizerController():
         fig.layout.yaxis.showticklabels = False
         
         # Send figure to View
-        fig_view = self.view.display_fig(fig) 
+        fig_view = self.view.set_display(figure=fig)
 
 # This overwrite method was obtained from:
 # https://stackoverflow.com/questions/66078893/plotly-express-timeline-for-gantt-chart-with-integer-xaxis
