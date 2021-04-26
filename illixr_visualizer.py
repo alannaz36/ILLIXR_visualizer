@@ -420,7 +420,7 @@ class VisualizerController():
                 self.dataDF = tempDataDF.sort_values(by=[self.startTime])
             
                 # Replace plugin_id with plugin_name
-                self.dataDF = self.dataDF.rename(columns={self.pluginID : self.plugin_name}, errors="raise")
+                self.dataDF = self.dataDF.rename(columns={self.pluginID : self.pluginName}, errors="raise")
                 self.dataDF = self.dataDF.replace(to_replace=self.nameDF.to_dict())
             
             # Each time databases are loaded, render new figure
@@ -441,9 +441,7 @@ class VisualizerController():
                 df = pd.read_sql(sql_stmt, con=connection, index_col=index_column)
             else:
                 df = pd.read_sql(sql_stmt, con=connection)
-        except Exception as e:
-            print("Reading from database threw exception: " + str(e))         
-            
+        except:
             # Display error message asking to reload
             error_msg = QMessageBox()
             error_msg.setIcon(QMessageBox.Critical)
@@ -462,9 +460,13 @@ class VisualizerController():
             Utilizes plot settings stored in Controller. """
         # Calculate subset of data to display based on plot settings
         # Always acquire settingsLock before dfLock
-        with self.settingsLock and self.dfLock: 
-            #subDF = 
-                      
+        with self.settingsLock and self.dfLock:
+            # Range of ns to include:
+            # [currentPage * pageSz, currentPage * pageSz + pageSz)
+            pageStart = self.currentPage * self.pageSz
+            pageEnd   = self.currentPage * self.pageSz + self.pageSz
+            subDF = self.dataDF[(self.dataDF[self.startTime] >= pageStart) & (self.dataDF[self.startTime] < pageEnd)]
+                
         # Generate figure for display
         fig = px.timeline(subDF, 
             x_start = self.startTime,
