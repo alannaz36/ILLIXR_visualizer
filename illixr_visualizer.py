@@ -138,18 +138,18 @@ class VisualizerGUILoadDialog(QDialog):
 
     def getDatabasePaths(self):
         """ Provides the database paths in a tuple where first is the plugin 
-            database path and the second is a list of the data (switchboard
-            and threadloop) databases paths. If plugin database path is not 
-            found, namePath is None. If data paths are not found, dataPaths
-            is an empty list. """
+            database path and the second is a dictionary of the data 
+            (switchboard and threadloop) databases paths. If plugin database
+            path is not found, namePath is None. If data paths are not found,
+            dataPaths is an empty dictionary. """
         namePath = None
-        dataPaths = []
+        dataPaths = {}
         if self.pluginDBPath is not None:
             namePath = self.pluginDBPath
             if self.switchboardDBPath is not None:
-                dataPaths.append(self.switchboardDBPath)
+                dataPaths["switchboard"] = self.switchboardDBPath
             if self.threadloopDBPath is not None:
-                dataPaths.append(self.threadloopDBPath)
+                dataPaths["threadloop"] = self.threadloopDBPath
         return namePath, dataPaths
                 
 
@@ -319,6 +319,7 @@ class VisualizerGUI(QMainWindow):
         """ Signals Controller to handle load. """
         self.loadSignal.emit()
        
+    # TODO: create an update plot method which takes a figure and embeds it in the display
 
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
@@ -333,9 +334,16 @@ class VisualizerController():
         self.currentPage = 0  # Starts on the first page of data
         
         self.pluginTable = 'plugin_name' # Name of table containing plugin names 
-        self.pluginNameSQL = 'SELECT * FROM ' + self.pluginTable
-        
         self.pluginID = 'plugin_id' # Name of plugin identifier attribute, shared over databases
+        self.pluginName = 'plugin_name' # Name of column holding plugin names
+        
+        # Define SQL to extract plugin IDs and plugin names from table
+        self.nameSQL = ('SELECT ' +
+            self.pluginID + ', ' +
+            self.pluginName +
+            ' FROM ' + 
+            self.pluginTable
+        )
         
         # Data table names
         self.switchboardTable = 'switchboard_callback' # Name of table containing switchboard data
@@ -345,12 +353,15 @@ class VisualizerController():
         self.endTime   = 'cpu_time_stop'  # Name of attribute containing end times
         
         # Define base data extraction SQL statement, add data table name on use
-        self.dataExtractSQL = ('SELECT ' +
+        self.dataSQL = ('SELECT ' +
             self.pluginID  + ', ' +
             self.startTime + ', ' +
             self.endTime   +
             ' FROM '
         )
+        
+        self.nameDF = None
+        self.dataDF = None
     
     def _load(self):
         """ Handles loading of databases. """
@@ -358,7 +369,83 @@ class VisualizerController():
         loadGUI = VisualizerGUILoadDialog()
         if loadGUI.exec_():
             # Successful retrieval of databases
-            namePath, dataPath = loadGUI.getDatabasePaths()    
+            namePath, dataPaths = loadGUI.getDatabasePaths()
+                        
+            # Load plugin names
+            tempDF = self._db_to_df(
+                dbPath = namePath, 
+                sql_stmt = self.nameSQL,
+                index_column = self.pluginID,
+                contents = "plugin names",
+                tableName = self.pluginTable,
+                attribs = "'" + self.pluginID + "' and '" + self.pluginName + "'"
+            )
+            if tempDF is None:  # Failed to load, retry
+                return self._load()
+            self.nameDF = tempDF
+            
+            # Load logged data (switchboard and threadloop)
+            tempDataDF = None
+            for dataType, dataPath in dataPaths.items():
+                if dataType == "switchboard":
+                    tempDF = self._db_to_df(
+                        dbPath = dataPath,
+                        sql_stmt = self.dataSQL + self.switchboardTable,
+                        contents = "switchboard logs",
+                        tableName = self.switchboardTable,
+                        attribs = "'" + self.pluginID + "', '" + self.startTime + "' and '" + self.endTime + "'"
+                    )
+                elif dataType == "threadloop":
+                    tempDF = self._db_to_df(
+                        dbPath = dataPath,
+                        sql_stmt = self.dataSQL + self.threadloopTable,
+                        contents = "threadloop logs",
+                        tableName = self.threadloopTable,
+                        attribs = "'" + self.pluginID + "', '" + self.startTime + "' and '" + self.endTime + "'"
+                    )
+                if tempDF is None:  # Failed to load, retry
+                    return self._load()
+                    
+                # Append to temporary DataFrame
+                if tempDataDF is not None:
+                    tempDataDF.append(tempDF)
+                else:
+                    tempDataDF = tempDF
+            self.dataDF = tempDataDF
+            
+            # TODO: create figure to send to view (tell view to plot(fig)) which uses default plot settings
+
+    
+    def _db_to_df(self, dbPath, sql_stmt, contents : str, tableName : str, attribs : str, index_column=None):
+        """ Helper function for _load that connects to databases
+            and stores data in a pandas DataFrame. """
+        # Establish connection to the database
+        db_uri = "file:" + dbPath + "?mode=ro"
+        connection = sqlite3.connect(db_uri, uri=True)
+            
+        # Load data from database into pandas DataFrame
+        df = None
+        try:
+            if index_column is not None:
+                df = pd.read_sql(sql_stmt, con=connection, index_col=index_column)
+            else:
+                df = pd.read_sql(sql_stmt, con=connection)
+        except Exception as e:
+            print("Reading from database threw exception: " + str(e))         
+            
+            # Display error message asking to reload
+            error_msg = QMessageBox()
+            error_msg.setIcon(QMessageBox.Critical)
+            msg = ("Please load a database with " + contents + ". Must have a '" +
+                tableName + "' table with attributes " + attribs + "."
+            )
+            error_msg.setText(msg)
+            error_msg.setWindowTitle("Malformed Database")
+            error_msg.setStandardButtons(QMessageBox.Ok)
+            error_msg.exec_()
+        connection.close()
+        return df
+
 
 if __name__ == '__main__':
     illixr_visualizer = QApplication(sys.argv)
