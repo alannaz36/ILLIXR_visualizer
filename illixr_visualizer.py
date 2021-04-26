@@ -20,6 +20,7 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 import sys
+import threading
 
 __author__ = 'Alanna Zoscak'
         
@@ -192,34 +193,27 @@ class VisualizerGUI(QMainWindow):
         self.menubar.setGeometry(QtCore.QRect(0, 0, w, 30))
         
         self.menuFile = QtWidgets.QMenu(self.menubar)
-        #self.menuFile.setObjectName("menuFile")
         self.menuFile.setTitle("File")
         
         self.menuData = QtWidgets.QMenu(self.menubar)
-        #self.menuData.setObjectName("menuData")
         self.menuData.setTitle("Data")
         
         self.menuPlotSettings = QtWidgets.QMenu(self.menubar)
-        #self.menuPlotSettings.setObjectName("menuPlotSettings")
         self.menuPlotSettings.setTitle("Plot Settings")
         
         self.menuHelp = QtWidgets.QMenu(self.menubar)
-        #self.menuHelp.setObjectName("menuHelp")
         self.menuHelp.setTitle("Help")
         
         self.setMenuBar(self.menubar)
         
         # Add actions - sub categories of menu items
         self.actionNew = QtWidgets.QAction(self)
-        #self.actionNew.setObjectName("actionNew")
         self.actionNew.setText("New")
         
         self.actionSave = QtWidgets.QAction(self)
-        #self.actionSave.setObjectName("actionSave")
         self.actionSave.setText("Save")
         
         self.actionLoad = QtWidgets.QAction(self)
-        #self.actionUpload.setObjectName("actionUpload")
         self.actionLoad.setText("Load Data")
         self.actionLoad.setShortcut("Ctrl+L")
         self.actionLoad.triggered.connect(self._load)
@@ -319,7 +313,9 @@ class VisualizerGUI(QMainWindow):
         """ Signals Controller to handle load. """
         self.loadSignal.emit()
        
-    # TODO: create an update plot method which takes a figure and embeds it in the display
+    def display_fig(self, fig):
+        """ Embeds given figure in the display. """
+        # TODO maybe lock on who can set the display?
 
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
@@ -330,8 +326,13 @@ class VisualizerController():
         self.view.loadSignal.connect(self._load)
         
         # Default plot settings
+        self.settingsLock = threading.Lock()
         self.pageSz = 1000000 # Number of nanoseconds to include per page
         self.currentPage = 0  # Starts on the first page of data
+        
+        # Configure plotly express with custom dataframe processor method 
+        # to avoid plotly express' auto-use of datetime objects
+        px._core.process_dataframe_timeline = integer_process_dataframe_timeline
         
         self.pluginTable = 'plugin_name' # Name of table containing plugin names 
         self.pluginID = 'plugin_id' # Name of plugin identifier attribute, shared over databases
@@ -360,6 +361,8 @@ class VisualizerController():
             ' FROM '
         )
         
+        # pandas DataFrames storing logged data
+        self.dfLock = threading.Lock()
         self.nameDF = None
         self.dataDF = None
     
@@ -370,9 +373,9 @@ class VisualizerController():
         if loadGUI.exec_():
             # Successful retrieval of databases
             namePath, dataPaths = loadGUI.getDatabasePaths()
-                        
+            
             # Load plugin names
-            tempDF = self._db_to_df(
+            tempNameDF = self._db_to_df(
                 dbPath = namePath, 
                 sql_stmt = self.nameSQL,
                 index_column = self.pluginID,
@@ -380,9 +383,8 @@ class VisualizerController():
                 tableName = self.pluginTable,
                 attribs = "'" + self.pluginID + "' and '" + self.pluginName + "'"
             )
-            if tempDF is None:  # Failed to load, retry
+            if tempNameDF is None:  # Failed to load, retry
                 return self._load()
-            self.nameDF = tempDF
             
             # Load logged data (switchboard and threadloop)
             tempDataDF = None
@@ -411,10 +413,19 @@ class VisualizerController():
                     tempDataDF.append(tempDF)
                 else:
                     tempDataDF = tempDF
-            self.dataDF = tempDataDF
             
-            # TODO: create figure to send to view (tell view to plot(fig)) which uses default plot settings
-
+            with self.dfLock:
+                # Sort and set
+                self.nameDF = tempNameDF
+                self.dataDF = tempDataDF.sort_values(by=[self.startTime])
+            
+                # Replace plugin_id with plugin_name
+                self.dataDF = self.dataDF.rename(columns={self.pluginID : self.plugin_name}, errors="raise")
+                self.dataDF = self.dataDF.replace(to_replace=self.nameDF.to_dict())
+            
+            # Each time databases are loaded, render new figure
+            self._create_fig()
+            
     
     def _db_to_df(self, dbPath, sql_stmt, contents : str, tableName : str, attribs : str, index_column=None):
         """ Helper function for _load that connects to databases
@@ -445,6 +456,52 @@ class VisualizerController():
             error_msg.exec_()
         connection.close()
         return df
+    
+    def _create_fig(self):
+        """ Generates figure for display.
+            Utilizes plot settings stored in Controller. """
+        # Calculate subset of data to display based on plot settings
+        # Always acquire settingsLock before dfLock
+        with self.settingsLock and self.dfLock: 
+            #subDF = 
+                      
+        # Generate figure for display
+        fig = px.timeline(subDF, 
+            x_start = self.startTime,
+            x_end = self.endTime, 
+            y = self.pluginName, 
+            color = self.pluginName, 
+            labels = {self.pluginName: 'Plugin Name', self.startTime: 'Start Time (ns)', self.endTime: 'End Time (ns)'}
+        ) 
+        fig.layout.xaxis.type = 'linear'
+        fig.layout.xaxis.title = 'Time (ns)'
+        fig.layout.yaxis.title = None
+        fig.layout.yaxis.showticklabels = False
+        
+        # Send figure to View
+        fig_view = self.view.display_fig(fig) 
+
+# This overwrite method was obtained from:
+# https://stackoverflow.com/questions/66078893/plotly-express-timeline-for-gantt-chart-with-integer-xaxis
+def integer_process_dataframe_timeline(args):
+    """
+    Overwrite conversion to datetime input for px.timeline()
+    """
+    print("Processing x-axis data as an integer rather than a datetime")
+    args["is_timeline"] = True
+    if args["x_start"] is None or args["x_end"] is None:
+        raise ValueError("Both x_start and x_end are required")
+    
+    x_start = args["data_frame"][args["x_start"]]
+    x_end = args["data_frame"][args["x_end"]]
+    
+    # No columns added to the dataframe, no risk of overwrite
+    args["data_frame"][args["x_end"]] = (x_end - x_start)
+    args["x"] = args["x_end"]
+    del args["x_end"]
+    args["base"] = args["x_start"]
+    del args["x_start"]
+    return args
 
 
 if __name__ == '__main__':
@@ -453,6 +510,5 @@ if __name__ == '__main__':
     view.show()
     controller = VisualizerController(view)
     sys.exit(illixr_visualizer.exec_())
-        
-        
-        
+    
+    
