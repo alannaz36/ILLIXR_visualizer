@@ -268,9 +268,10 @@ class VisualizerGUI(QMainWindow):
         self.pluginList.setDragDropMode(QAbstractItemView.InternalMove)
         self.pluginListLayout.addWidget(self.pluginList)
     
-    	# TODO Button to reorder plot
-    	#reorderButton = QPushButton('Reorder Plot')
-    	#reorderButton.clicked.connect(self._reorder_plot)    	
+        # Button to reorder plot
+        reorderButton = QPushButton('Reorder Plot')
+        reorderButton.clicked.connect(self._reorder_plot)
+        self.pluginListLayout.addWidget(reorderButton)   	
     
     def _createFigureRegion(self):
         """ Creates the right-hand figure display. """
@@ -353,9 +354,32 @@ class VisualizerGUI(QMainWindow):
             self.rightSignal.emit()
                 
     def change_pagenum(self, pagenum : str):
-        """ """
+        """ Changes the page number that is displayed in the page navigation bar. """
         self.illixr_img.clear
         self.illixr_img.setText(pagenum)
+        
+    def _reorder_plot(self):
+        """ Signals Controller to reorder the plugins in the plot. """
+        if self.has_figure is True:
+            # Get the plugin names in order from list
+            newPluginOrder = []
+            for i in range(self.pluginList.count()):
+                newPluginOrder.append(self.pluginList.item(i).text())
+            self.strList = newPluginOrder
+            self.reorderSignal.emit()
+            
+    def get_plugin_list(self):
+        """ Returns the plugin list as it was last set,
+            either by loading new data or clicking the 
+            Reorder Plot button. """
+        return self.strList
+            
+    def set_plugin_list(self, plugins : list):
+        """ Sets the list of the plugins. """
+        self.pluginList.clear()
+        
+        self.strList = plugins
+        self.pluginList.addItems(self.strList)
 
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
@@ -366,6 +390,7 @@ class VisualizerController():
         self.view.loadSignal.connect(self._load)
         self.view.leftSignal.connect(self._page_left)
         self.view.rightSignal.connect(self._page_right)
+        self.view.reorderSignal.connect(self._reorder_fig)
         
         # Default plot settings
         self.pageSz = 1000000 # Number of nanoseconds to include per page
@@ -379,6 +404,7 @@ class VisualizerController():
         self.pluginTable = 'plugin_name' # Name of table containing plugin names 
         self.pluginID = 'plugin_id' # Name of plugin identifier attribute, shared over databases
         self.pluginName = 'plugin_name' # Name of column holding plugin names
+        self.pluginOrder = {self.pluginName : []} # Dictionary specifying plugin ordering
         
         # Define SQL to extract plugin IDs and plugin names from table
         self.nameSQL = ('SELECT ' +
@@ -467,6 +493,11 @@ class VisualizerController():
             # Sort data by startTime
             self.dataDF = self.dataDF.sort_values(by=[self.startTime])
             
+            self.pluginOrder[self.pluginName] = self.dataDF[self.pluginName].unique().tolist()
+            
+            # Tell view the order of the plugins
+            self.view.set_plugin_list(self.pluginOrder[self.pluginName])
+            
             # Each time databases are loaded, render new figure
             self._create_fig()
             
@@ -523,6 +554,11 @@ class VisualizerController():
         # if any rows have a startTime < pageStart, replace with startTime
         subDF.loc[subDF[self.startTime] < pageStart, self.startTime] = pageStart
             
+        # Specify order of plot, dependent on plugins that are in this page
+        pluginSubset = subDF[self.pluginName].unique().tolist()
+        pluginSubsetOrdered = [plugin for plugin in self.pluginOrder[self.pluginName] if plugin in pluginSubset]
+        plotOrder = {self.pluginName : pluginSubsetOrdered}
+            
         if subDF.empty:
             self.view.set_display(text='No data on this page.')
             self.view.change_pagenum(str(self.currentPage) + ' / ' + str(self.totalPages))
@@ -534,7 +570,8 @@ class VisualizerController():
             x_end = self.endTime, 
             y = self.pluginName, 
             color = self.pluginName, 
-            labels = {self.pluginName: 'Plugin Name', self.startTime: 'Start Time (ns)', self.endTime: 'End Time (ns)'}
+            labels = {self.pluginName: 'Plugin Name', self.startTime: 'Start Time (ns)', self.endTime: 'End Time (ns)'},
+            category_orders = plotOrder
         ) 
         fig.layout.xaxis.type = 'linear'
         fig.layout.xaxis.title = 'Time (ns)'
@@ -556,6 +593,13 @@ class VisualizerController():
         if self.currentPage < self.totalPages:
             self.currentPage += 1
             self._create_fig()
+            
+    def _reorder_fig(self):
+        """ Reorders the figure based on the ordering in
+            the left Plugins list. """
+        newPluginOrder = self.view.get_plugin_list()
+        self.pluginOrder[self.pluginName] = newPluginOrder
+        self._create_fig()
 
 # This overwrite method was obtained from:
 # https://stackoverflow.com/questions/66078893/plotly-express-timeline-for-gantt-chart-with-integer-xaxis
