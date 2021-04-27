@@ -4,6 +4,7 @@
     design pattern, serving as a modular addition to the ILLIXR project.
     It is built using Python, PyQt5, and Plotly. """
 
+from math import ceil
 import pandas as pd
 import sqlite3
 
@@ -20,7 +21,6 @@ from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 import sys
-import threading
 import warnings
 from pandas.core.common import SettingWithCopyWarning
 
@@ -101,7 +101,6 @@ class VisualizerGUILoadDialog(QDialog):
                 self.switchboardDisplay.setText(filename)
             elif name == "Threadloop":
                 self.tempPathDict[name] = filename
-                # MOVE self.threadloopDBPath = filename
                 self.threadloopDisplay.setText(filename)
 
     def _load(self):
@@ -162,6 +161,9 @@ class VisualizerGUI(QMainWindow):
         Displays plots and interfaces with user. """
     # Define signals for signalling Controller
     loadSignal = QtCore.pyqtSignal()
+    reorderSignal = QtCore.pyqtSignal()
+    leftSignal = QtCore.pyqtSignal()
+    rightSignal = QtCore.pyqtSignal()
         
     def __init__(self):
         """ View initializer. """
@@ -182,6 +184,8 @@ class VisualizerGUI(QMainWindow):
         self._centralWidget = QWidget(self)
         self.setCentralWidget(self._centralWidget)
         self._centralWidget.setLayout(self.generalLayout)
+        
+        self.has_figure = False
         
         self._createMenu(w)
         self._createDisplay()
@@ -257,11 +261,16 @@ class VisualizerGUI(QMainWindow):
         pluginLabel.setAlignment(QtCore.Qt.AlignCenter)
         self.pluginListLayout.addWidget(pluginLabel)
         
-        self.pluginList = QListWidget() # Orderable plugin list
+        # Orderable plugin list
+        self.pluginList = QListWidget() 
         self.strList = ['No plugin names provided yet.', 'Load through Data menu option.']
         self.pluginList.addItems(self.strList);
         self.pluginList.setDragDropMode(QAbstractItemView.InternalMove)
         self.pluginListLayout.addWidget(self.pluginList)
+    
+    	# TODO Button to reorder plot
+    	#reorderButton = QPushButton('Reorder Plot')
+    	#reorderButton.clicked.connect(self._reorder_plot)    	
     
     def _createFigureRegion(self):
         """ Creates the right-hand figure display. """
@@ -288,6 +297,7 @@ class VisualizerGUI(QMainWindow):
         # Add arrows and icon
         self.left_button = QToolButton()
         self.left_button.setArrowType(QtCore.Qt.LeftArrow)
+        self.left_button.clicked.connect(self._page_left)
         
         self.illixr_img = QLabel()
         pix_img = QtGui.QPixmap("illixr_icon.png").scaled(36, 36, QtCore.Qt.KeepAspectRatio)
@@ -295,8 +305,8 @@ class VisualizerGUI(QMainWindow):
         
         self.right_button = QToolButton()
         self.right_button.setArrowType(QtCore.Qt.RightArrow)
-        # self.right_button.clicked.connect(RIGHT FUNCTION) <-- which will actually occur in Controller, view simply must call a 'right_clicked' method
-            
+        self.right_button.clicked.connect(self._page_right)
+        
         self.pageNavLayout.addWidget(self.left_button)
         self.pageNavLayout.addWidget(self.illixr_img)
         self.pageNavLayout.addWidget(self.right_button)
@@ -317,6 +327,7 @@ class VisualizerGUI(QMainWindow):
         
         html = '<html><head><meta charset="utf-8" />'
         if figure is not None:
+            self.has_figure = True
             html += '<script src="https://cdn.plot.ly/plotly-latest.min.js"></script></head>'
             html += '<body>'
             # 'div' is specified for embedding the graph
@@ -327,9 +338,24 @@ class VisualizerGUI(QMainWindow):
         else:
             raise Exception("figure or text must be supplied.")
         html += '</body></html>'
-        
+          
         self.fig_view.setHtml(html)
         self.fig_view.raise_()
+        
+    def _page_left(self):
+        """ Signals Controller to page left, updating the figure. """
+        if self.has_figure is True:
+            self.leftSignal.emit()
+        
+    def _page_right(self):
+        """ Signals Controller to page right, updating the figure. """
+        if self.has_figure is True:
+            self.rightSignal.emit()
+                
+    def change_pagenum(self, pagenum : str):
+        """ """
+        self.illixr_img.clear
+        self.illixr_img.setText(pagenum)
 
 class VisualizerController():
     """ ILLIXR Visualizer's Controller.
@@ -338,11 +364,13 @@ class VisualizerController():
         """ Controller initializer. """
         self.view = view
         self.view.loadSignal.connect(self._load)
+        self.view.leftSignal.connect(self._page_left)
+        self.view.rightSignal.connect(self._page_right)
         
         # Default plot settings
-        self.settingsLock = threading.Lock()
         self.pageSz = 1000000 # Number of nanoseconds to include per page
         self.currentPage = 0  # Starts on the first page of data
+        self.totalPages  = 0  # The minimum number of pages needed to graph all the data
         
         # Configure plotly express with custom dataframe processor method 
         # to avoid plotly express' auto-use of datetime objects
@@ -376,7 +404,6 @@ class VisualizerController():
         )
         
         # pandas DataFrames storing logged data
-        self.dfLock = threading.Lock()
         self.nameDF = None
         self.dataDF = None
     
@@ -403,6 +430,7 @@ class VisualizerController():
             # Load logged data (switchboard and threadloop)
             tempDataDF = None
             for dataType, dataPath in dataPaths.items():
+                tempDF = None
                 if dataType == "switchboard":
                     tempDF = self._db_to_df(
                         dbPath = dataPath,
@@ -424,18 +452,20 @@ class VisualizerController():
                     
                 # Append to temporary DataFrame
                 if tempDataDF is not None:
-                    tempDataDF.append(tempDF)
+                    tempDataDF = tempDataDF.append(tempDF)
                 else:
                     tempDataDF = tempDF
+             
+            # Set class fields
+            self.nameDF = tempNameDF
+            self.dataDF = tempDataDF
             
-            with self.dfLock:
-                # Sort and set
-                self.nameDF = tempNameDF
-                self.dataDF = tempDataDF.sort_values(by=[self.startTime])
+            # Replace plugin_id with plugin_name
+            self.dataDF = self.dataDF.rename(columns={self.pluginID : self.pluginName}, errors="raise")
+            self.dataDF = self.dataDF.replace(to_replace=self.nameDF.to_dict())
             
-                # Replace plugin_id with plugin_name
-                self.dataDF = self.dataDF.rename(columns={self.pluginID : self.pluginName}, errors="raise")
-                self.dataDF = self.dataDF.replace(to_replace=self.nameDF.to_dict())
+            # Sort data by startTime
+            self.dataDF = self.dataDF.sort_values(by=[self.startTime])
             
             # Each time databases are loaded, render new figure
             self._create_fig()
@@ -474,19 +504,30 @@ class VisualizerController():
             Utilizes plot settings stored in Controller. """
         # Calculate subset of data to display based on plot settings
         # Always acquire settingsLock before dfLock
-        with self.settingsLock and self.dfLock:
-            # Range of ns to include:
-            # [currentPage * pageSz, currentPage * pageSz + pageSz)
-            pageStart = self.currentPage * self.pageSz
-            pageEnd   = self.currentPage * self.pageSz + self.pageSz
-            subDF = self.dataDF[(self.dataDF[self.startTime] >= pageStart) & (self.dataDF[self.startTime] < pageEnd)]
+        # Range of ns to include:
+        # [currentPage * pageSz, currentPage * pageSz + pageSz)
+        pageStart  = self.currentPage * self.pageSz
+        pageEnd    = self.currentPage * self.pageSz + self.pageSz
+        maxEndTime = (self.dataDF[self.endTime]).max()
+        self.totalPages = ceil((maxEndTime - self.pageSz) / self.pageSz)
             
-            # Suppress warning
-            warnings.simplefilter('ignore', SettingWithCopyWarning)
+        subDF = self.dataDF[(self.dataDF[self.startTime] >= pageStart) & (self.dataDF[self.startTime] < pageEnd) |
+                            (self.dataDF[self.endTime] >= pageStart) & (self.dataDF[self.endTime] < pageEnd)]
+        
+        # Suppress warning
+        warnings.simplefilter('ignore', SettingWithCopyWarning)
             
-            # if any rows have an endTime >= pageEnd, replace with endTime
-            subDF.loc[subDF[self.endTime] > pageEnd, self.endTime] = pageEnd
-                
+        # if any rows have an endTime > pageEnd, replace with endTime
+        subDF.loc[subDF[self.endTime] > pageEnd, self.endTime] = pageEnd
+        
+        # if any rows have a startTime < pageStart, replace with startTime
+        subDF.loc[subDF[self.startTime] < pageStart, self.startTime] = pageStart
+            
+        if subDF.empty:
+            self.view.set_display(text='No data on this page.')
+            self.view.change_pagenum(str(self.currentPage) + ' / ' + str(self.totalPages))
+            return
+        
         # Generate figure for display
         fig = px.timeline(subDF, 
             x_start = self.startTime,
@@ -501,7 +542,20 @@ class VisualizerController():
         fig.layout.yaxis.showticklabels = False
         
         # Send figure to View
-        fig_view = self.view.set_display(figure=fig)
+        self.view.set_display(figure=fig)
+        self.view.change_pagenum(str(self.currentPage) + ' / ' + str(self.totalPages))
+        
+    def _page_left(self):
+        """ Pages left, updating current settings and figure. """
+        if self.currentPage > 0:
+            self.currentPage -= 1
+            self._create_fig()
+        
+    def _page_right(self):
+        """ Pages right, updating current settings and figure. """
+        if self.currentPage < self.totalPages:
+            self.currentPage += 1
+            self._create_fig()
 
 # This overwrite method was obtained from:
 # https://stackoverflow.com/questions/66078893/plotly-express-timeline-for-gantt-chart-with-integer-xaxis
@@ -509,7 +563,7 @@ def integer_process_dataframe_timeline(args):
     """
     Overwrite conversion to datetime input for px.timeline()
     """
-    print("Processing x-axis data as an integer rather than a datetime")
+    # print("Processing x-axis data as an integer rather than a datetime")
     args["is_timeline"] = True
     if args["x_start"] is None or args["x_end"] is None:
         raise ValueError("Both x_start and x_end are required")
