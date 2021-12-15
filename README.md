@@ -12,10 +12,10 @@ Launch the ILLIXR Visualizer from the terminal with `python illixr_visualizer.py
   <img width="75%" src="https://raw.githubusercontent.com/alannaz36/ILLIXR_visualizer/main/gallery/startup.png">
 </p>
 
-In order to load demo ILLIXR data, go to `Data &#8594; Load Data` or use the shortcut key `Ctrl+L`. The loading menu will appear:
+In order to load demo ILLIXR data, go to Data &#8594; Load Data or use the shortcut key `Ctrl+L`. The loading menu will appear:
 
 <p align="center">
-  <img width="75%" src="https://raw.githubusercontent.com/alannaz36/ILLIXR_visualizer/main/gallery/load.png">
+  <img width="30%" src="https://raw.githubusercontent.com/alannaz36/ILLIXR_visualizer/main/gallery/load.png">
 </p>
  
 `Browse` to your cloned repository, open the `metrics` folder, and select the following for each database:
